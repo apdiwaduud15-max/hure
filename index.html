@@ -1,0 +1,57 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>xaysimo supermarket</title>
+    <meta name="description" content="Professional-grade mobile-first ERP, POS, and Debt system with AI assistant.">
+    <meta property="og:title" content="xaysimo supermarket">
+    <meta property="og:description" content="Professional-grade mobile-first ERP, POS, and Debt system with AI assistant.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+      body { 
+        font-family: 'Inter', sans-serif; 
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+      }
+      
+      @media print {
+        .no-print { display: none !important; }
+        .print-only { display: block !important; }
+        @page { 
+          margin: 10mm;
+          size: auto;
+        }
+        body { background: white !important; color: black !important; padding: 0 !important; }
+        main { margin-left: 0 !important; width: 100% !important; }
+        .max-w-6xl, .max-w-2xl, .max-w-7xl { max-width: 100% !important; width: 100% !important; margin: 0 !important; }
+        .bg-white { background: white !important; border: none !important; box-shadow: none !important; }
+        .shadow-sm, .shadow-xl, .shadow-2xl { box-shadow: none !important; }
+        .rounded-[40px], .rounded-3xl, .rounded-2xl { border-radius: 0 !important; }
+        .border { border: 1px solid #eee !important; }
+        .bg-slate-900, .bg-black { background-color: black !important; color: white !important; -webkit-print-color-adjust: exact; }
+        .text-blue-600 { color: #000 !important; font-weight: 900 !important; }
+        table { width: 100% !important; border-collapse: collapse !important; }
+        th, td { border-bottom: 1px solid #ddd !important; }
+        ::-webkit-scrollbar { display: none; }
+      }
+      .print-only { display: none; }
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+      
+      /* Mobile optimization classes */
+      .scrollbar-hide::-webkit-scrollbar { display: none; }
+      .touch-scroll { -webkit-overflow-scrolling: touch; }
+    </style>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-slate-50 text-slate-900 overflow-x-hidden selection:bg-blue-100">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>

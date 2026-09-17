@@ -1,0 +1,82 @@
+{
+  "entities": {
+    "storeData": {
+      "title": "Store Data",
+      "description": "Root store metadata and configuration document",
+      "type": "object",
+      "properties": {
+        "payload": {
+          "type": "object",
+          "description": "Store configuration, accounts, users, and last modified metadata"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Timestamp of the last update"
+        }
+      },
+      "required": ["payload", "updatedAt"]
+    },
+    "subItem": {
+      "title": "Subcollection Item",
+      "description": "Individual item stored in subcollections (products, transactions, expenses, customers, suppliers, etc.)",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the record"
+        }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/storeData/{storeId}": {
+      "schema": "storeData",
+      "description": "Real-time root configuration and metadata for store"
+    },
+    "/storeData/{storeId}/products/{productId}": {
+      "schema": "subItem",
+      "description": "Store products subcollection"
+    },
+    "/storeData/{storeId}/transactions/{transactionId}": {
+      "schema": "subItem",
+      "description": "Store transactions subcollection"
+    },
+    "/storeData/{storeId}/customers/{customerId}": {
+      "schema": "subItem",
+      "description": "Store customers subcollection"
+    },
+    "/storeData/{storeId}/suppliers/{supplierId}": {
+      "schema": "subItem",
+      "description": "Store suppliers subcollection"
+    },
+    "/storeData/{storeId}/expenses/{expenseId}": {
+      "schema": "subItem",
+      "description": "Store expenses subcollection"
+    },
+    "/storeData/{storeId}/stockAdjustments/{adjustmentId}": {
+      "schema": "subItem",
+      "description": "Store stock adjustments subcollection"
+    },
+    "/storeData/{storeId}/khudaarSales/{khudaarSaleId}": {
+      "schema": "subItem",
+      "description": "Store khudaar sales subcollection"
+    },
+    "/storeData/{storeId}/khudaarExpenses/{khudaarExpenseId}": {
+      "schema": "subItem",
+      "description": "Store khudaar expenses subcollection"
+    },
+    "/storeData/{storeId}/auditLogs/{auditLogId}": {
+      "schema": "subItem",
+      "description": "Store audit logs subcollection"
+    },
+    "/storeData/{storeId}/recycleBin/{recycleBinId}": {
+      "schema": "subItem",
+      "description": "Store recycle bin subcollection"
+    },
+    "/storeData/{storeId}/chunks/{chunkId}": {
+      "schema": "subItem",
+      "description": "Chunked subcollection partition for multi-megabyte enterprise datasets"
+    }
+  }
+}
