@@ -1200,7 +1200,7 @@ const App: React.FC = () => {
 
     setCloudSyncStatus('syncing');
 
-    // Instant, ultra-responsive live cloud write (debounced 350ms) to ensure live sync with minimum quota consumption
+    // Instant, ultra-responsive live cloud write (sub-second 75ms save) to ensure immediate cloud persistence
     syncTimeoutRef.current = setTimeout(() => {
       lastSyncedHashRef.current = currentHash;
       saveToFirebaseCloud(dataWithTimestamp, currentStoreId)
@@ -1219,7 +1219,7 @@ const App: React.FC = () => {
       if (data.settings?.supabaseUrl && data.settings?.supabaseKey) {
         saveToSupabase(data.settings.supabaseUrl, data.settings.supabaseKey, dataWithTimestamp, currentStoreId).catch(() => {});
       }
-    }, 350);
+    }, 75);
 
     return () => {
       if (syncTimeoutRef.current) {

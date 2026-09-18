@@ -4,6 +4,9 @@ service cloud.firestore {
     match /storeData/{storeId} {
       allow read, write: if true;
     }
+    match /storeData/{storeId}/{allSubpaths=**} {
+      allow read, write: if true;
+    }
     match /{document=**} {
       allow read, write: if true;
     }

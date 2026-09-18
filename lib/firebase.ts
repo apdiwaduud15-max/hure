@@ -133,7 +133,28 @@ export const CLIENT_ID = typeof window !== 'undefined'
 
 let lastLocalWriteTimestamp = 0;
 let isSavingInProgress = false;
-let queuedDataToSave: { data: any; storeId: string } | null = null;
+let queuedDataToSave: { data: any; storeId: string; options?: SaveOptions } | null = null;
+let maxKnownItemCount = 0;
+
+export interface SaveOptions {
+  allowEmptyWipe?: boolean;
+}
+
+export const countItemsInPayload = (d: any): number => {
+  if (!d || typeof d !== 'object') return 0;
+  return (
+    (Array.isArray(d.products) ? d.products.length : 0) +
+    (Array.isArray(d.transactions) ? d.transactions.length : 0) +
+    (Array.isArray(d.customers) ? d.customers.length : 0) +
+    (Array.isArray(d.suppliers) ? d.suppliers.length : 0) +
+    (Array.isArray(d.expenses) ? d.expenses.length : 0) +
+    (Array.isArray(d.khudaarSales) ? d.khudaarSales.length : 0) +
+    (Array.isArray(d.khudaarExpenses) ? d.khudaarExpenses.length : 0) +
+    (Array.isArray(d.stockAdjustments) ? d.stockAdjustments.length : 0) +
+    (Array.isArray(d.iceCreamIngredients) ? d.iceCreamIngredients.length : 0) +
+    (Array.isArray(d.accounts) ? d.accounts.length : 0)
+  );
+};
 
 /**
  * Deeply sanitizes an object/array to ensure no `undefined` values or invalid types
@@ -222,11 +243,28 @@ async function commitBatchOperations(
  * 1. If payload fits in single document (< 750KB), saves with a SINGLE write op (saving 95% quota).
  * 2. If larger, seamlessly chunks across subcollections.
  */
-export const saveToFirebaseCloud = async (data: any, storeId: string = 'master_db'): Promise<boolean> => {
+export const saveToFirebaseCloud = async (
+  data: any, 
+  storeId: string = 'master_db',
+  options?: SaveOptions
+): Promise<boolean> => {
   if (!data || typeof data !== 'object') return false;
 
+  const currentItemCount = countItemsInPayload(data);
+
+  // Anti-Wipeout Safety Gate:
+  // Prevents empty state from wiping an active cloud database without explicit permission ("amar la'aan")
+  if (currentItemCount === 0 && maxKnownItemCount > 0 && !options?.allowEmptyWipe) {
+    console.warn('[Firebase Anti-Wipeout Gate] Blocked empty overwrite. Cloud data is safely preserved.');
+    return false;
+  }
+
+  if (currentItemCount > maxKnownItemCount) {
+    maxKnownItemCount = currentItemCount;
+  }
+
   if (isSavingInProgress) {
-    queuedDataToSave = { data, storeId };
+    queuedDataToSave = { data, storeId, options };
     return true;
   }
 
@@ -242,17 +280,26 @@ export const saveToFirebaseCloud = async (data: any, storeId: string = 'master_d
     } catch {}
 
     const mainDocRef = doc(db, 'storeData', storeId);
+    const vaultDocRef = doc(db, 'storeData', `${storeId}_vault`);
 
-    // If payload is under 750KB, save as single document for maximum Free Tier efficiency (1 write!)
+    // If payload is under 750KB, save as single document for maximum speed & efficiency
     if (jsonSize > 0 && jsonSize < 750 * 1024) {
-      await setDoc(mainDocRef, {
+      const docPayload = {
         isChunked: false,
         payload: sanitized,
         lastModified: data.lastModified || now,
         updatedAt: now,
         writerTime: now,
-        writerClientId: CLIENT_ID
-      });
+        writerClientId: CLIENT_ID,
+        itemCount: currentItemCount
+      };
+
+      await setDoc(mainDocRef, docPayload);
+
+      // Dual Cloud Vault: Synchronously mirror meaningful data to secondary permanent vault
+      if (currentItemCount > 0) {
+        setDoc(vaultDocRef, docPayload).catch(() => {});
+      }
       return true;
     }
 
@@ -286,21 +333,32 @@ export const saveToFirebaseCloud = async (data: any, storeId: string = 'master_d
       });
     }
 
+    const chunkedMainDoc = {
+      isChunked: true,
+      manifest,
+      settings: sanitizeForFirestore(data.settings || {}),
+      deletedIds: sanitizeForFirestore(data.deletedIds || {}),
+      iceCreamRecipes: sanitizeForFirestore(data.iceCreamRecipes || {}),
+      lastModified: data.lastModified || now,
+      updatedAt: now,
+      writerTime: now,
+      writerClientId: CLIENT_ID,
+      itemCount: currentItemCount
+    };
+
     ops.push({
       type: 'set',
       ref: mainDocRef,
-      data: {
-        isChunked: true,
-        manifest,
-        settings: sanitizeForFirestore(data.settings || {}),
-        deletedIds: sanitizeForFirestore(data.deletedIds || {}),
-        iceCreamRecipes: sanitizeForFirestore(data.iceCreamRecipes || {}),
-        lastModified: data.lastModified || now,
-        updatedAt: now,
-        writerTime: now,
-        writerClientId: CLIENT_ID
-      }
+      data: chunkedMainDoc
     });
+
+    if (currentItemCount > 0) {
+      ops.push({
+        type: 'set',
+        ref: vaultDocRef,
+        data: chunkedMainDoc
+      });
+    }
 
     await commitBatchOperations(ops);
     return true;
@@ -312,7 +370,7 @@ export const saveToFirebaseCloud = async (data: any, storeId: string = 'master_d
     if (queuedDataToSave) {
       const next = queuedDataToSave;
       queuedDataToSave = null;
-      saveToFirebaseCloud(next.data, next.storeId).catch(() => {});
+      saveToFirebaseCloud(next.data, next.storeId, next.options).catch(() => {});
     }
   }
 };
@@ -321,16 +379,27 @@ export const saveToFirebaseCloud = async (data: any, storeId: string = 'master_d
  * Clean wipe and replace: Resets the cloud database and writes the fresh new data.
  */
 export const cleanWipeAndSaveToFirebase = async (data: any, storeId: string = 'master_db'): Promise<boolean> => {
-  return saveToFirebaseCloud(data, storeId);
+  return saveToFirebaseCloud(data, storeId, { allowEmptyWipe: true });
 };
 
 /**
  * Fetch full store dataset from Cloud on app startup.
+ * Automatically fails over to Cloud Vault if primary doc is ever unreadable.
  */
 export const fetchFromFirebaseCloud = async (storeId: string = 'master_db'): Promise<any | null> => {
   try {
     const storeDocRef = doc(db, 'storeData', storeId);
-    const mainSnap = await getDoc(storeDocRef);
+    let mainSnap = await getDoc(storeDocRef);
+
+    // Fail-safe dual fallback: If primary doc is missing, read from secondary vault
+    if (!mainSnap.exists() || !mainSnap.data()) {
+      const vaultDocRef = doc(db, 'storeData', `${storeId}_vault`);
+      const vaultSnap = await getDoc(vaultDocRef);
+      if (vaultSnap.exists() && vaultSnap.data()) {
+        mainSnap = vaultSnap;
+      }
+    }
+
     if (!mainSnap.exists()) return null;
 
     const mainData = mainSnap.data();
@@ -339,6 +408,8 @@ export const fetchFromFirebaseCloud = async (storeId: string = 'master_db'): Pro
     // 1. Single document payload (Fastest, zero extra reads)
     const payload = mainData.payload;
     if (payload && typeof payload === 'object') {
+      const cnt = countItemsInPayload(payload);
+      if (cnt > maxKnownItemCount) maxKnownItemCount = cnt;
       return payload;
     }
 
@@ -372,6 +443,8 @@ export const fetchFromFirebaseCloud = async (storeId: string = 'master_db'): Pro
         assembled[key] = list;
       }
 
+      const cnt = countItemsInPayload(assembled);
+      if (cnt > maxKnownItemCount) maxKnownItemCount = cnt;
       return assembled;
     }
 
@@ -483,5 +556,5 @@ export const resetFirebaseSubcollections = async (storeId: string = 'master_db')
     iceCreamRecipes: {},
     settings: {},
     lastModified: Date.now()
-  }, storeId);
+  }, storeId, { allowEmptyWipe: true });
 };
