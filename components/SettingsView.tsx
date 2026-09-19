@@ -22,6 +22,7 @@ CREATE POLICY "Allow public read and write" ON public.erp_storage
   USING (true)
   WITH CHECK (true);`;
 import { saveToFirebaseCloud, fetchFromFirebaseCloud, resetFirebaseSubcollections, cleanWipeAndSaveToFirebase } from '../lib/firebase';
+import { saveToPostgresCloud } from '../lib/postgresSync';
 import { saveToIndexedDB, safeSaveAppData, flushSyncSaveAppData, clearIndexedDB } from '../lib/offlineStorage';
 import { parseAndValidateBackupJSON, cleanRawJsonString, triggerJsonBackupDownload } from '../lib/backupUtils';
 import { sendTwoHourPeriodicReport, testEmailJsAlert } from '../lib/emailAlertService';
@@ -149,6 +150,7 @@ const SettingsView: React.FC<Props> = ({ data, setData, addLog }) => {
       // 3. Save directly to Firebase Cloud with chunked enterprise protection
       await saveToFirebaseCloud(timestampedData, storeId);
       await saveToFirebaseCloud(timestampedData, 'master_db');
+      saveToPostgresCloud(timestampedData, storeId).catch(() => {});
 
       // 4. Save to Supabase if configured
       const sUrl = timestampedData.settings?.supabaseUrl || settings.supabaseUrl;

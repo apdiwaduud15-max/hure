@@ -2,6 +2,9 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import { saveStoreDataToPostgres, getStoreDataFromPostgres, getOrCreateUser } from './src/db/users.ts';
+import { db } from './src/db/index.ts';
+import { auditLogs } from './src/db/schema.ts';
 
 async function startServer() {
   const app = express();
@@ -229,6 +232,75 @@ Guidelines:
   // Health check route
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
+  });
+
+  // Cloud SQL PostgreSQL Health & Status
+  app.get('/api/sql/health', async (req, res) => {
+    try {
+      const result = await db.select().from(auditLogs).limit(1);
+      res.json({ status: 'connected', provider: 'Cloud SQL PostgreSQL', rows: result.length });
+    } catch (err: any) {
+      console.error('Cloud SQL health check error:', err);
+      res.status(500).json({ status: 'error', message: err?.message || 'Database connection error' });
+    }
+  });
+
+  // Cloud SQL PostgreSQL Store Data Sync
+  app.post('/api/sql/sync', async (req, res) => {
+    try {
+      const { storeId, data } = req.body;
+      const targetStoreId = storeId || 'store_xaysimo';
+      if (!data) {
+        return res.status(400).json({ error: 'Data payload is required' });
+      }
+
+      await saveStoreDataToPostgres(targetStoreId, data);
+
+      // Async audit log
+      db.insert(auditLogs)
+        .values({
+          storeId: targetStoreId,
+          action: 'PostgreSQL Auto Sync',
+          details: `Synchronized ${data.products?.length || 0} products, ${data.transactions?.length || 0} transactions`,
+        })
+        .catch(() => {});
+
+      res.json({ success: true, storeId: targetStoreId, syncedAt: Date.now() });
+    } catch (err: any) {
+      console.error('PostgreSQL sync error:', err);
+      res.status(500).json({ error: err?.message || 'Failed to sync to PostgreSQL' });
+    }
+  });
+
+  // Cloud SQL PostgreSQL Store Data Retrieval
+  app.get('/api/sql/store/:storeId', async (req, res) => {
+    try {
+      const storeId = req.params.storeId || 'store_xaysimo';
+      const result = await getStoreDataFromPostgres(storeId);
+      if (result && result.payload) {
+        res.json({ success: true, data: result.payload, lastModified: result.lastModified });
+      } else {
+        res.status(404).json({ success: false, message: 'No store data found in PostgreSQL' });
+      }
+    } catch (err: any) {
+      console.error('PostgreSQL get store data error:', err);
+      res.status(500).json({ error: err?.message || 'Failed to fetch store data' });
+    }
+  });
+
+  // Cloud SQL PostgreSQL User Registration / Sync
+  app.post('/api/sql/user', async (req, res) => {
+    try {
+      const { uid, email, displayName } = req.body;
+      if (!uid || !email) {
+        return res.status(400).json({ error: 'UID and email are required' });
+      }
+      const user = await getOrCreateUser(uid, email, displayName);
+      res.json({ success: true, user });
+    } catch (err: any) {
+      console.error('PostgreSQL user registration error:', err);
+      res.status(500).json({ error: err?.message || 'Failed to save user' });
+    }
   });
 
   // Vite middleware for development vs static serve for production

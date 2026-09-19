@@ -84,6 +84,7 @@ import RolePasswordModal from './components/RolePasswordModal';
 import { generateId } from './lib/utils';
 import { saveToSupabase, fetchFromSupabase } from './lib/supabase';
 import { saveToFirebaseCloud, fetchFromFirebaseCloud, subscribeToFirebaseCloud, testConnection, resetFirebaseSubcollections, cleanWipeAndSaveToFirebase } from './lib/firebase';
+import { saveToPostgresCloud } from './lib/postgresSync';
 import { saveToIndexedDB, getFromIndexedDB, safeSaveAppData, flushSyncSaveAppData, getBestLocalStorageBackup, STORAGE_KEY, BACKUP_STORAGE_KEY, EMERGENCY_RESCUE_KEY, SESSION_BACKUP_KEY, hasMeaningfulData, countDataItems } from './lib/offlineStorage';
 import { parseAndValidateBackupJSON, sanitizeProduct, sanitizeCustomer, sanitizeSupplier, sanitizeTransaction, sanitizeKhudaarExpense, sanitizeKhudaarSale, sanitizeMonthlyArchive, triggerJsonBackupDownload } from './lib/backupUtils';
 
@@ -667,6 +668,7 @@ const App: React.FC = () => {
             await safeSaveAppData(cleaned);
             await saveToFirebaseCloud(cleaned, currentStoreId);
             await saveToFirebaseCloud(cleaned, 'master_db');
+            saveToPostgresCloud(cleaned, currentStoreId).catch(() => {});
             if (cleaned.settings?.supabaseUrl && cleaned.settings?.supabaseKey) {
               saveToSupabase(cleaned.settings.supabaseUrl, cleaned.settings.supabaseKey, cleaned, currentStoreId).catch(() => {});
             }
@@ -683,6 +685,7 @@ const App: React.FC = () => {
             await safeSaveAppData(updated);
             await saveToFirebaseCloud(updated, currentStoreId);
             await saveToFirebaseCloud(updated, 'master_db');
+            saveToPostgresCloud(updated, currentStoreId).catch(() => {});
             if (updated.settings?.supabaseUrl && updated.settings?.supabaseKey) {
               saveToSupabase(updated.settings.supabaseUrl, updated.settings.supabaseKey, updated, currentStoreId).catch(() => {});
             }
@@ -1229,6 +1232,9 @@ const App: React.FC = () => {
           }, 1500);
         });
 
+      // Also persist to PostgreSQL Cloud
+      saveToPostgresCloud(dataWithTimestamp, currentStoreId).catch(() => {});
+
       if (data.settings?.supabaseUrl && data.settings?.supabaseKey) {
         saveToSupabase(data.settings.supabaseUrl, data.settings.supabaseKey, dataWithTimestamp, currentStoreId).catch(() => {});
       }
@@ -1254,6 +1260,7 @@ const App: React.FC = () => {
       
       await saveToFirebaseCloud(dataWithTimestamp, currentStoreId);
       await saveToFirebaseCloud(dataWithTimestamp, 'master_db');
+      saveToPostgresCloud(dataWithTimestamp, currentStoreId).catch(() => {});
       lastSyncedHashRef.current = currentHash;
       setCloudSyncStatus('success');
     } catch (e: any) {
