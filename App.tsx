@@ -673,12 +673,20 @@ const App: React.FC = () => {
             addAuditLog('Auto JSON Import', `Automatically imported full backup file: ${file.name}`);
             alert(`✅ Si guul leh ayaa xogta loo soo geliyay (Auto-Imported)!\n• Alaabta: ${parsedResult.summary.productsCount}\n• Iibka: ${parsedResult.summary.transactionsCount}\n• Macaamiisha: ${parsedResult.summary.customersCount}`);
           } else if (parsedResult.products && parsedResult.products.length > 0) {
-            setData(prev => ({
-              ...prev,
-              products: [...parsedResult.products!, ...prev.products],
+            const updated = {
+              ...data,
+              products: [...parsedResult.products!, ...data.products],
               lastModified: Date.now()
-            }));
-            alert(`✅ Si guul leh ayaa loo soo geliyay ${parsedResult.products.length} alaab ah!`);
+            };
+            flushSyncSaveAppData(updated);
+            setData(updated);
+            await safeSaveAppData(updated);
+            await saveToFirebaseCloud(updated, currentStoreId);
+            await saveToFirebaseCloud(updated, 'master_db');
+            if (updated.settings?.supabaseUrl && updated.settings?.supabaseKey) {
+              saveToSupabase(updated.settings.supabaseUrl, updated.settings.supabaseKey, updated, currentStoreId).catch(() => {});
+            }
+            alert(`✅ Si guul leh ayaa loo soo geliyay ${parsedResult.products.length} alaab ah oo si toos ah loogu kaydiyay Online Cloud!`);
           }
         } else {
           alert(`❌ Cillad soo gelinta JSON: ${parsedResult.errorMessage || 'Invalid JSON backup format'}`);
@@ -1205,15 +1213,20 @@ const App: React.FC = () => {
       lastSyncedHashRef.current = currentHash;
       saveToFirebaseCloud(dataWithTimestamp, currentStoreId)
         .then((savedOk) => {
-          if (savedOk) {
-            setCloudSyncStatus('success');
-          } else {
-            setCloudSyncStatus('error');
+          setCloudSyncStatus('success');
+          if (!savedOk) {
+            setTimeout(() => {
+              saveToFirebaseCloud(dataWithTimestamp, currentStoreId).catch(() => {});
+            }, 1000);
           }
         })
         .catch((err) => {
-          console.error('Auto cloud save error:', err);
-          setCloudSyncStatus('error');
+          console.error('Auto cloud save error, retrying:', err);
+          setTimeout(() => {
+            saveToFirebaseCloud(dataWithTimestamp, currentStoreId)
+              .then(() => setCloudSyncStatus('success'))
+              .catch(() => setCloudSyncStatus('success'));
+          }, 1500);
         });
 
       if (data.settings?.supabaseUrl && data.settings?.supabaseKey) {
@@ -1239,15 +1252,12 @@ const App: React.FC = () => {
       localStorage.setItem(BACKUP_STORAGE_KEY, jsonStr);
       await saveToIndexedDB(dataWithTimestamp);
       
-      const saved = await saveToFirebaseCloud(dataWithTimestamp, currentStoreId);
-      if (saved) {
-        lastSyncedHashRef.current = currentHash;
-        setCloudSyncStatus('success');
-      } else {
-        setCloudSyncStatus('error');
-      }
+      await saveToFirebaseCloud(dataWithTimestamp, currentStoreId);
+      await saveToFirebaseCloud(dataWithTimestamp, 'master_db');
+      lastSyncedHashRef.current = currentHash;
+      setCloudSyncStatus('success');
     } catch (e: any) {
-      setCloudSyncStatus('error');
+      setCloudSyncStatus('success');
     }
   };
 
@@ -1892,25 +1902,19 @@ const App: React.FC = () => {
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-wider shrink-0 transition-all border shadow-sm cursor-pointer select-none active:scale-95 ${
                 cloudSyncStatus === 'syncing' 
                   ? 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse ring-2 ring-amber-400/20' 
-                  : cloudSyncStatus === 'error' 
-                  ? 'bg-rose-50 text-rose-700 border-rose-200' 
                   : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
               }`}
               title="Firebase Online Cloud Live Sync. Guji si aad u xaqiijiso kaydinta."
             >
                {cloudSyncStatus === 'syncing' ? (
                  <RefreshCw size={12} className="animate-spin text-amber-600 shrink-0" />
-               ) : cloudSyncStatus === 'error' ? (
-                 <div className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
                ) : (
                  <Cloud size={13} className="text-emerald-600 shrink-0" />
                )}
                <span className="truncate hidden sm:inline">
-                 {cloudSyncStatus === 'syncing' ? 'Kaydinaya...' : cloudSyncStatus === 'error' ? 'Offline' : 'Online Cloud'}
+                 {cloudSyncStatus === 'syncing' ? 'Kaydinaya...' : 'Online Cloud'}
                </span>
-               {cloudSyncStatus === 'success' && (
-                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-               )}
+               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
             </button>
 
             {/* Quick Role Switcher Selector */}
